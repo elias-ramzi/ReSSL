@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import math
+
 
 class LinearHead(nn.Module):
     def __init__(self, net, dim_in=2048, dim_out=1000):
@@ -24,11 +23,11 @@ class LinearHead(nn.Module):
 class ProjectionHead(nn.Module):
     def __init__(self, dim_in=2048, hidden_dim=4096, dim_out=512):
         super().__init__()
-        
+
         self.linear1 = nn.Linear(dim_in, hidden_dim)
         self.relu1 = nn.ReLU(True)
         self.linear2 = nn.Linear(hidden_dim, dim_out)
-    
+
     def forward(self, x):
         x = self.linear1(x)
         x = self.relu1(x)

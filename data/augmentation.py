@@ -1,8 +1,9 @@
 import random
 import torchvision.transforms as transforms
 
-from PIL import ImageFilter, Image, ImageOps
+from PIL import ImageFilter, ImageOps
 from data.randaugment import RandAugment
+
 
 class GaussianBlur(object):
     """Gaussian blur augmentation in SimCLR https://arxiv.org/abs/2002.05709"""
@@ -19,9 +20,9 @@ class GaussianBlur(object):
 class Solarize():
     def __init__(self, threshold=128):
         self.threshold = threshold
+
     def __call__(self, sample):
         return ImageOps.solarize(sample, self.threshold)
-
 
 
 moco_aug = transforms.Compose([
@@ -48,9 +49,9 @@ eval_aug = transforms.Compose([
     transforms.Resize(256),
     transforms.CenterCrop(224),
     transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                std=[0.229, 0.224, 0.225]),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
+
 
 class Multi_Transform(object):
     def __init__(
@@ -64,13 +65,13 @@ class Multi_Transform(object):
         assert len(size_crops) == len(nmb_crops)
         assert len(min_scale_crops) == len(nmb_crops)
         assert len(max_scale_crops) == len(nmb_crops)
-        trans=[]
+        trans = []
 
         self.strong = strong
 
         normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 
-        #image_k
+        # image_k
         weak = transforms.Compose([
             transforms.RandomResizedCrop(init_size, scale=(0.2, 1.)),
             transforms.RandomHorizontalFlip(),
@@ -79,17 +80,15 @@ class Multi_Transform(object):
         ])
         trans.append(weak)
 
-
-        trans_weak=[]
+        trans_weak = []
         if strong:
-            min_scale_crops=[0.08, 0.08, 0.08, 0.08, 0.08]
+            min_scale_crops = [0.08, 0.08, 0.08, 0.08, 0.08]
             jitter = transforms.ColorJitter(0.8, 0.8, 0.8, 0.2)
         else:
             jitter = transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)
 
-
         for i in range(len(size_crops)):
-            aug_list = [ 
+            aug_list = [
                 transforms.RandomResizedCrop(
                     size_crops[i],
                     scale=(min_scale_crops[i], max_scale_crops[i])
@@ -112,10 +111,9 @@ class Multi_Transform(object):
             trans_weak.extend([aug]*nmb_crops[i])
 
         trans.extend(trans_weak)
-        self.trans=trans
-        print("in total we have %d transforms"%(len(self.trans)))
+        self.trans = trans
+        print("in total we have %d transforms" % (len(self.trans)))
+
     def __call__(self, x):
         multi_crops = list(map(lambda trans: trans(x), self.trans))
         return multi_crops
-
-

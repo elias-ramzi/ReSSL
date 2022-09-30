@@ -1,6 +1,8 @@
 import torch.nn as nn
-from network.resnet import *
-from network.head import *
+import torch.nn.functional as F
+
+from network.resnet import resnet18, resnet34, resnet50
+from network.head import ProjectionHead
 
 
 backbone_dict = {
@@ -22,9 +24,8 @@ class BackBone(nn.Module):
         dim_in = dim_dict[backbone]
         self.net = backbone_dict[backbone]()
         self.head = ProjectionHead(dim_in=dim_in, hidden_dim=hidden_dim, dim_out=dim)
-    
+
     def forward(self, x):
         feat = self.net(x)
         embedding = self.head(feat)
         return F.normalize(embedding)
-

@@ -78,7 +78,7 @@ def main():
         test_dataset, batch_size=batch_size, shuffle=(test_sampler is None),
         num_workers=num_workers, pin_memory=True, sampler=test_sampler)
 
-    
+
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epochs*len(train_loader))
 
 
@@ -104,7 +104,7 @@ def main():
 
             image = image.cuda(local_rank, non_blocking=True)
             label = label.cuda(local_rank, non_blocking=True)
-            
+
             out = model(image)
             loss = F.cross_entropy(out, label)
 
@@ -119,7 +119,7 @@ def main():
 
             if i % 20 == 0 and rank == 0:
                 progress.display(i)
-            
+
             scheduler.step()
 
         # ---------------------- Test --------------------------
@@ -129,7 +129,7 @@ def main():
         with torch.no_grad():
             end = time.time()
             for i, (image, label) in enumerate(test_loader):
-                
+
                 image = image.cuda(local_rank, non_blocking=True)
                 label = label.cuda(local_rank, non_blocking=True)
 
@@ -144,7 +144,7 @@ def main():
                 # measure elapsed time
                 batch_time.update(time.time() - end)
                 end = time.time()
-        
+
         sum1, cnt1, sum5, cnt5 = torch_dist_sum(local_rank, top1.sum, top1.count, top5.sum, top5.count)
         top1_acc = sum(sum1.float()) / sum(cnt1.float())
         top5_acc = sum(sum5.float()) / sum(cnt5.float())

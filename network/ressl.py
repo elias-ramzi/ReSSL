@@ -1,7 +1,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 import torch
 import torch.nn as nn
-from network.backbone import *
+from network.backbone import BackBone
 
 
 class ReSSL(nn.Module):
@@ -115,7 +115,7 @@ class ReSSL(nn.Module):
         """
 
         q = self.encoder_q(im_q)
-        
+
         # compute key features
         with torch.no_grad():  # no gradient to keys
             self._momentum_update_key_encoder()  # update the key encoder
@@ -130,7 +130,7 @@ class ReSSL(nn.Module):
 
         # dequeue and enqueue
         self._dequeue_and_enqueue(k)
-        
+
         return logitsq, logitsk
 
 
@@ -141,8 +141,7 @@ def concat_all_gather(tensor):
     Performs all_gather operation on the provided tensors.
     *** Warning ***: torch.distributed.all_gather has no gradient.
     """
-    tensors_gather = [torch.ones_like(tensor)
-        for _ in range(torch.distributed.get_world_size())]
+    tensors_gather = [torch.ones_like(tensor) for _ in range(torch.distributed.get_world_size())]
     torch.distributed.all_gather(tensors_gather, tensor)
 
     output = torch.cat(tensors_gather, dim=0)

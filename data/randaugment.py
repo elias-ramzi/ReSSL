@@ -1,4 +1,3 @@
-
 # code in this file is adpated from
 # https://github.com/ildoonet/pytorch-randaugment/blob/master/RandAugment/augmentations.py
 # https://github.com/google-research/fixmatch/blob/master/third_party/auto_augment/augmentations.py
@@ -210,6 +209,7 @@ class RandAugment(object):
         self.n = n
         self.m = m
         self.augment_pool = fixmatch_augment_pool()
+
     def __call__(self, img):
         ops = random.choices(self.augment_pool, k=self.n)
         for op, max_v, bias in ops:
@@ -217,4 +217,3 @@ class RandAugment(object):
             if random.random() < 0.5:
                 img = op(img, v=v, max_v=max_v, bias=bias)
         return img
-

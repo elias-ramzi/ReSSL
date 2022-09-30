@@ -10,7 +10,6 @@ class DatasetCache(data.Dataset):
     def __init__(self):
         super().__init__()
         self.initialized = False
-    
 
     def _init_memcached(self):
         if not self.initialized:
@@ -24,19 +23,17 @@ class DatasetCache(data.Dataset):
         value = mc.pyvector()
         self.mclient.Get(filename, value)
         value_str = mc.ConvertBuffer(value)
-        
+
         buff = io.BytesIO(value_str)
         with Image.open(buff) as img:
             img = img.convert('RGB')
         return img
 
 
-
 class BaseDataset(DatasetCache):
     def __init__(self, mode='train', max_class=1000, aug=None):
         super().__init__()
         self.initialized = False
-
 
         prefix = '/mnt/lustreold/share/images/meta'
         image_folder_prefix = '/mnt/lustreold/share/images'
@@ -52,7 +49,6 @@ class BaseDataset(DatasetCache):
         else:
             raise NotImplementedError('mode: ' + mode + ' does not exist please select from [train, test, eval]')
 
-
         self.samples = []
         with open(image_list) as f:
             for line in f:
@@ -66,13 +62,10 @@ class BaseDataset(DatasetCache):
                 transforms.RandomResizedCrop(224),
                 transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                        std=[0.229, 0.224, 0.225])
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
             ])
         else:
             self.transform = aug
-
-
 
 
 class ImagenetContrastive(BaseDataset):
@@ -91,7 +84,6 @@ class ImagenetContrastive(BaseDataset):
         return self.transform(img), self.transform(img)
 
 
-
 class Imagenet(BaseDataset):
     def __init__(self, mode='train', max_class=1000, aug=None):
         super().__init__(mode, max_class, aug)
@@ -104,4 +96,3 @@ class Imagenet(BaseDataset):
         filename = os.path.join(self.image_folder, name)
         img = self.load_image(filename)
         return self.transform(img), label
-
