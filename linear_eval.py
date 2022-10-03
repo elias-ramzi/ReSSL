@@ -1,17 +1,17 @@
-import torch
-from data.imagenet import *
-from data.augmentation import *
-from network.head import *
-from torch.nn.parallel import DistributedDataParallel
-import torch.nn.functional as F
-from util.meter import *
 import time
-from util.torch_dist_sum import *
-from util.dist_init import dist_init
 import argparse
-from network.resnet import *
-from network.backbone import backbone_dict, dim_dict
 
+import torch
+import torch.nn.functional as F
+from torch.nn.parallel import DistributedDataParallel
+
+from data.imagenet import Imagenet
+from data.augmentation import eval_aug
+from network.head import LinearHead
+from network.backbone import backbone_dict, dim_dict
+from util.meter import AverageMeter, ProgressMeter
+from util.torch_dist_sum import torch_dist_sum
+from util.dist_init import dist_init
 
 
 def accuracy(output, target, topk=(1,)):
@@ -38,7 +38,6 @@ args = parser.parse_args()
 print(args)
 
 
-
 def main():
 
     rank, local_rank, world_size = dist_init()
@@ -46,7 +45,6 @@ def main():
     epochs = 100
     batch_size = 32
     num_workers = 6
-
 
     pre_train = backbone_dict[args.backbone]()
     state_dict = torch.load('checkpoints/' + args.checkpoint, map_location='cpu')['model']
@@ -71,16 +69,13 @@ def main():
         train_dataset, batch_size=batch_size, shuffle=(train_sampler is None),
         num_workers=num_workers, pin_memory=True, sampler=train_sampler)
 
-
     test_dataset = Imagenet(mode='val', aug=eval_aug)
     test_sampler = torch.utils.data.distributed.DistributedSampler(test_dataset)
     test_loader = torch.utils.data.DataLoader(
         test_dataset, batch_size=batch_size, shuffle=(test_sampler is None),
         num_workers=num_workers, pin_memory=True, sampler=test_sampler)
 
-
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epochs*len(train_loader))
-
 
     best_acc = 0
     best_acc5 = 0
@@ -154,6 +149,7 @@ def main():
 
         if rank == 0:
             print('Epoch:{} * Acc@1 {top1_acc:.3f} Acc@5 {top5_acc:.3f} Best_Acc@1 {best_acc:.3f} Best_Acc@5 {best_acc5:.3f}'.format(epoch, top1_acc=top1_acc, top5_acc=top5_acc, best_acc=best_acc, best_acc5=best_acc5))
+
 
 if __name__ == "__main__":
     main()

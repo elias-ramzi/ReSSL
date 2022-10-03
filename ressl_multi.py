@@ -1,15 +1,16 @@
-import torch
-from util.torch_dist_sum import *
-from data.imagenet import *
-from data.augmentation import *
-from util.meter import *
-from network.ressl_multi import ReSSL
-import time
-import torch.nn as nn
-import argparse
-import math
-import torch.nn.functional as F
 import os
+import math
+import time
+import argparse
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+from data.imagenet import Imagenet
+from data.augmentation import Multi_Transform
+from util.meter import AverageMeter, ProgressMeter
+from network.ressl_multi import ReSSL
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--port', type=int, default=23457)
@@ -34,7 +35,7 @@ def adjust_learning_rate(optimizer, epoch, base_lr, i, iteration_per_epoch):
     else:
         T = T - warmup_iters
         lr = 0.5 * base_lr * (1 + math.cos(1.0 * T / total_iters * math.pi))
-    
+
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
@@ -85,12 +86,11 @@ def train(train_loader, model, local_rank, rank, criterion, optimizer, base_lr, 
 
 def main():
     from torch.nn.parallel import DistributedDataParallel
-    import math
     from util.dist_init import dist_init
-    
+
     rank, local_rank, world_size = dist_init(args.port)
 
-    batch_size = 32 # single gpu
+    batch_size = 32  # single gpu
     num_workers = 8
     base_lr = args.lr
 
@@ -104,9 +104,11 @@ def main():
     bn_params = [v for n, v in param_dict.items() if ('bn' in n or 'bias' in n)]
     rest_params = [v for n, v in param_dict.items() if not ('bn' in n or 'bias' in n)]
 
-    optimizer = torch.optim.SGD([{'params': bn_params, 'weight_decay': 0,},
-                                    {'params': rest_params, 'weight_decay': 1e-4}],
-                                    lr=base_lr, momentum=0.9, weight_decay=1e-4)
+    optimizer = torch.optim.SGD([
+        {'params': bn_params, 'weight_decay': 0},
+        {'params': rest_params, 'weight_decay': 1e-4}
+    ],
+        lr=base_lr, momentum=0.9, weight_decay=1e-4)
 
     torch.backends.cudnn.benchmark = True
 
@@ -115,7 +117,7 @@ def main():
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=batch_size, shuffle=(train_sampler is None),
         num_workers=num_workers, pin_memory=True, sampler=train_sampler, drop_last=True)
-    
+
     criterion = nn.CrossEntropyLoss().cuda(local_rank)
 
     if not os.path.exists('checkpoints'):
@@ -124,7 +126,7 @@ def main():
     checkpoint_path = 'checkpoints/ressl-multi-{}-{}.pth'.format(args.backbone, epochs)
     print('checkpoint_path:', checkpoint_path)
     if os.path.exists(checkpoint_path):
-        checkpoint =  torch.load(checkpoint_path, map_location='cpu')
+        checkpoint = torch.load(checkpoint_path, map_location='cpu')
         model.load_state_dict(checkpoint['model'])
         optimizer.load_state_dict(checkpoint['optimizer'])
         start_epoch = checkpoint['epoch']
@@ -132,21 +134,20 @@ def main():
     else:
         start_epoch = 0
         print(checkpoint_path, 'not found, start from epoch 0')
-    
 
     model.train()
     for epoch in range(start_epoch, epochs):
         train_sampler.set_epoch(epoch)
         train(train_loader, model, local_rank, rank, criterion, optimizer, base_lr, epoch)
-        
+
         if rank == 0:
             torch.save(
                 {
-                    'model': model.state_dict(), 
-                    'optimizer': optimizer.state_dict(), 
+                    'model': model.state_dict(),
+                    'optimizer': optimizer.state_dict(),
                     'epoch': epoch + 1
                 }, checkpoint_path)
-    
+
 
 if __name__ == "__main__":
     main()
