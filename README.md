@@ -7,7 +7,7 @@ For details see [ReSSL: Relational Self-Supervised Learning with Weak Augmentati
 ![ReSSL](img/framework.png)
 
 
-## Cifar10 / STL10 
+## Cifar10 / STL10
 This repository is based on ImageNet dataset, We also provide the training code and pretrained model for cifar10/100, STL10 and TinyImageNet, please download it from [this link](https://drive.google.com/file/d/1j2I1Lh9Dy7cHb6YO0PZ8HXDNewXrHO-j/view?usp=sharing).
 
 ## Reproducing
@@ -41,3 +41,10 @@ If you find that ReSSL interesting and help your research, please consider citin
 }
 ```
 
+## Launching Code
+
+```
+python -m torch.distributed.run --nproc_per_node=3 --nnodes=1 --node_rank=0 --master_addr="localhost" --master_port=12345 \
+ressl.py \
+--distributed
+```

@@ -8,16 +8,18 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from network.ressl import ReSSL
-from data.imagenet import ImagenetContrastive
+# from data.imagenet import ImagenetContrastive
+from data.sop import SOPContrastive
 from data.augmentation import moco_aug, target_aug
 from util.meter import AverageMeter, ProgressMeter
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--port', type=int, default=23457)
-parser.add_argument('--epochs', type=int, default=200)
+parser.add_argument('--distributed', default=False, action='store_true')
+parser.add_argument('--cluster', default=False, action='store_true')
+parser.add_argument('--epochs', type=int, default=600)
 parser.add_argument('--lr', type=float, default=0.05)
 parser.add_argument('--t', type=float, default=0.04)
-parser.add_argument('--backbone', type=str, default='resnet50')
+parser.add_argument('--backbone', type=str, default='resnet18')
 args = parser.parse_args()
 print(args)
 
@@ -89,14 +91,20 @@ def main():
     from torch.nn.parallel import DistributedDataParallel
     from util.dist_init import dist_init
 
-    rank, local_rank, world_size = dist_init(args.port)
+    rank, local_rank, world_size = dist_init(args.distributed, args.cluster)
 
-    batch_size = 32  # single gpu
+    batch_size = 64  # single gpu
     num_workers = 8
-    base_lr = args.lr
+    base_lr = args.lr * (batch_size * world_size) / 256
 
-    model = ReSSL(backbone=args.backbone)
-    model = DistributedDataParallel(model.to(local_rank), device_ids=[local_rank], output_device=local_rank)
+    train_dataset = SOPContrastive(aug=[moco_aug, target_aug])
+
+    # model = ReSSL(backbone=args.backbone)
+    model = ReSSL(backbone=args.backbone, K=16384, m=0.996, distributed=args.distributed)
+    model.to(local_rank)
+    if args.distributed:
+        model = DistributedDataParallel(model, device_ids=[local_rank], output_device=local_rank)
+    print("model created")
 
     param_dict = {}
     for k, v in model.named_parameters():
@@ -113,32 +121,37 @@ def main():
 
     torch.backends.cudnn.benchmark = True
 
-    train_dataset = ImagenetContrastive(aug=[moco_aug, target_aug], max_class=1000)
-    train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
+    # train_dataset = ImagenetContrastive(aug=[moco_aug, target_aug], max_class=1000)
+    train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset) if args.distributed else None
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=batch_size, shuffle=(train_sampler is None),
-        num_workers=num_workers, pin_memory=True, sampler=train_sampler, drop_last=True)
+        num_workers=num_workers, pin_memory=True, sampler=train_sampler, drop_last=True,
+        persistent_workers=True)
 
     criterion = nn.CrossEntropyLoss().cuda(local_rank)
 
-    if not os.path.exists('checkpoints'):
-        os.makedirs('checkpoints')
+    # if not os.path.exists('checkpoints'):
+    #     os.makedirs('checkpoints')
 
     checkpoint_path = 'checkpoints/ressl-{}-{}.pth'.format(args.backbone, epochs)
-    print('checkpoint_path:', checkpoint_path)
-    if os.path.exists(checkpoint_path):
-        checkpoint = torch.load(checkpoint_path, map_location='cpu')
-        model.load_state_dict(checkpoint['model'])
-        optimizer.load_state_dict(checkpoint['optimizer'])
-        start_epoch = checkpoint['epoch']
-        print(checkpoint_path, 'found, start from epoch', start_epoch)
-    else:
-        start_epoch = 0
-        print(checkpoint_path, 'not found, start from epoch 0')
+    # print('checkpoint_path:', checkpoint_path)
+    # if os.path.exists(checkpoint_path):
+    #     checkpoint = torch.load(checkpoint_path, map_location='cpu')
+    #     model.load_state_dict(checkpoint['model'])
+    #     optimizer.load_state_dict(checkpoint['optimizer'])
+    #     start_epoch = checkpoint['epoch']
+    #     print(checkpoint_path, 'found, start from epoch', start_epoch)
+    # else:
+    #     start_epoch = 0
+    #     print(checkpoint_path, 'not found, start from epoch 0')
+
+    start_epoch = 0
+    print(checkpoint_path, 'not found, start from epoch 0')
 
     model.train()
     for epoch in range(start_epoch, epochs):
-        train_sampler.set_epoch(epoch)
+        if args.distributed:
+            train_sampler.set_epoch(epoch)
         train(train_loader, model, local_rank, rank, criterion, optimizer, base_lr, epoch)
 
         if rank == 0:
@@ -148,6 +161,14 @@ def main():
                     'optimizer': optimizer.state_dict(),
                     'epoch': epoch + 1
                 }, checkpoint_path)
+
+            if (epoch+1) % 50 == 0:
+                torch.save(
+                    {
+                        'model': model.state_dict(),
+                        'optimizer': optimizer.state_dict(),
+                        'epoch': epoch + 1
+                    }, f'checkpoints/epoch_{epoch}')
 
 
 if __name__ == "__main__":

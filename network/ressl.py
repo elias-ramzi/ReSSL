@@ -9,7 +9,7 @@ class ReSSL(nn.Module):
     Build a MoCo model with: a query encoder, a key encoder, and a queue
     https://arxiv.org/abs/1911.05722
     """
-    def __init__(self, backbone='resnet50', dim=512, K=65536*2, m=0.999):
+    def __init__(self, backbone='resnet50', dim=512, K=65536*2, m=0.999, distributed=False):
         """
         dim: feature dimension (default: 512)
         K: queue size; number of negative keys (default: 65536*2)
@@ -19,6 +19,7 @@ class ReSSL(nn.Module):
 
         self.K = K
         self.m = m
+        self.distributed = distributed
 
         # create the encoders
         self.encoder_q = BackBone(backbone=backbone, dim=dim)
@@ -45,12 +46,13 @@ class ReSSL(nn.Module):
     @torch.no_grad()
     def _dequeue_and_enqueue(self, keys):
         # gather keys before updating queue
-        keys = concat_all_gather(keys)
+        if self.distributed:
+            keys = concat_all_gather(keys)
 
         batch_size = keys.shape[0]
 
         ptr = int(self.queue_ptr)
-        assert self.K % batch_size == 0  # for simplicity
+        assert self.K % batch_size == 0, f"K={self.K}, batch_size={batch_size}"  # for simplicity
 
         # replace the keys at ptr (dequeue and enqueue)
         self.queue[:, ptr:ptr + batch_size] = keys.T
@@ -121,9 +123,12 @@ class ReSSL(nn.Module):
             self._momentum_update_key_encoder()  # update the key encoder
 
             # shuffle for making use of BN
-            im, idx_unshuffle = self._batch_shuffle_ddp(im_k)
-            k = self.encoder_k(im)  # keys: NxC
-            k = self._batch_unshuffle_ddp(k, idx_unshuffle)
+            if self.distributed:
+                im, idx_unshuffle = self._batch_shuffle_ddp(im_k)
+                k = self.encoder_k(im)  # keys: NxC
+                k = self._batch_unshuffle_ddp(k, idx_unshuffle)
+            else:
+                k = self.encoder_k(im_k)  # keys: NxC
 
         logitsq = torch.einsum('nc,ck->nk', [q, self.queue.clone().detach()])
         logitsk = torch.einsum('nc,ck->nk', [k, self.queue.clone().detach()])

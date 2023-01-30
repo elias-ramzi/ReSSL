@@ -1,42 +1,36 @@
-import torch
 import os
+import subprocess
+
+import torch
 
 
-def dist_init(port=23456):
+def dist_init(is_distributed, is_cluster):
 
-    def init_parrots(host_addr, rank, local_rank, world_size, port):
-        os.environ['MASTER_ADDR'] = str(host_addr)
-        os.environ['MASTER_PORT'] = str(port)
+    if is_cluster and is_distributed:
+        # local rank on the current node / global rank
+        local_rank = int(os.environ['SLURM_LOCALID'])
+        global_rank = int(os.environ['SLURM_PROCID'])
+        # number of processes / GPUs per node
+        world_size = int(os.environ['SLURM_NTASKS'])
+        # define master address and master port
+        hostnames = subprocess.check_output(['scontrol', 'show', 'hostnames', os.environ['SLURM_JOB_NODELIST']])
+        master_addr = hostnames.split()[0].decode('utf-8')
+        # set environment variables for 'env://'
+        os.environ['MASTER_ADDR'] = master_addr
+        os.environ['MASTER_PORT'] = str(29500)
         os.environ['WORLD_SIZE'] = str(world_size)
-        os.environ['RANK'] = str(rank)
-        torch.distributed.init_process_group(backend="nccl")
-        torch.cuda.set_device(local_rank)
+        os.environ['RANK'] = str(global_rank)
+        os.environ['LOCAL_RANK'] = str(local_rank)
 
-    def init(host_addr, rank, local_rank, world_size, port):
-        host_addr_full = 'tcp://' + host_addr + ':' + str(port)
-        torch.distributed.init_process_group("nccl", init_method=host_addr_full, rank=rank, world_size=world_size)
-        torch.cuda.set_device(local_rank)
-        assert torch.distributed.is_initialized()
-
-    def parse_host_addr(s):
-        if '[' in s:
-            left_bracket = s.index('[')
-            right_bracket = s.index(']')
-            prefix = s[:left_bracket]
-            first_number = s[left_bracket+1:right_bracket].split(',')[0].split('-')[0]
-            return prefix + first_number
-        else:
-            return s
-
-    rank = int(os.environ['SLURM_PROCID'])
-    local_rank = int(os.environ['SLURM_LOCALID'])
-    world_size = int(os.environ['SLURM_NTASKS'])
-
-    ip = parse_host_addr(os.environ['SLURM_STEP_NODELIST'])
-
-    if torch.__version__ == 'parrots':
-        init_parrots(ip, rank, local_rank, world_size, port)
+    if is_distributed:
+        torch.distributed.init_process_group(backend='nccl')
+        world_size = int(os.environ['WORLD_SIZE'])
+        rank = int(os.environ['RANK'])
+        local_rank = int(os.environ['LOCAL_RANK'])
     else:
-        init(ip, rank, local_rank, world_size, port)
+        world_size = 1
+        rank = 0
+        local_rank = 0
+    torch.cuda.set_device(local_rank)
 
     return rank, local_rank, world_size
